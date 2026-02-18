@@ -2,6 +2,8 @@
 
 A Slack bot that watches channels for YouTube and Spotify links and adds them to a shared Spotify playlist.
 
+***Basically entirely vibe-coded, fair warning!***
+
 ## Features
 
 - Monitors Slack channels for YouTube and Spotify track links
