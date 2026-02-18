@@ -56,7 +56,7 @@ Copy these tokens:
 Run the helper script to authorize the bot:
 
 ```bash
-pip install spotipy
+pip install requests
 export SPOTIFY_CLIENT_ID=your-client-id
 export SPOTIFY_CLIENT_SECRET=your-client-secret
 python scripts/get_spotify_token.py
@@ -115,6 +115,25 @@ python -m groovebot.main
 3. For YouTube links: extracts metadata with yt-dlp, searches Spotify
 4. For Spotify links: uses the track ID directly
 5. Adds the track to the playlist and reacts to the message
+
+## Spotify API Note
+
+As of late 2024, Spotify deprecated the `/playlists/{id}/tracks` endpoint in favour of `/playlists/{id}/items`. The popular `spotipy` library still uses the deprecated endpoint, which results in **403 Forbidden errors** for apps in development mode.
+
+This project uses direct Spotify API calls with the correct `/items` endpoint, avoiding this issue entirely.
+
+## Troubleshooting
+
+### 403 Forbidden on playlist operations
+
+1. **Check your Spotify account**: The app owner must have Spotify Premium for development mode apps
+2. **Add yourself to User Management**: In the Spotify Developer Dashboard, go to your app → User Management and add your Spotify account email
+3. **Verify scopes**: Ensure your refresh token was generated with `playlist-modify-public`, `playlist-modify-private`, and `playlist-read-private` scopes
+4. **Revoke and re-authorize**: If you changed scopes, revoke the app at https://www.spotify.com/account/apps/ and re-run the token script
+
+### "Couldn't write token to cache" warning
+
+This warning from spotipy can be ignored—this project doesn't use spotipy or token caching.
 
 ## License
 
