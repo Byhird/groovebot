@@ -1,53 +1,64 @@
-"""Spotify API client for searching tracks and managing playlists."""
+"""Spotify API client for searching tracks and managing playlists.
 
+Note: This module uses direct Spotify API calls instead of the spotipy library.
+As of late 2024, Spotify deprecated the /playlists/{id}/tracks endpoint in favour
+of /playlists/{id}/items. The spotipy library still uses the old endpoint, causing
+403 errors for apps in development mode.
+"""
+
+import base64
 import logging
 import time
 
 import requests
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 
 from .config import Config
 
 logger = logging.getLogger(__name__)
 
+SPOTIFY_API_BASE = "https://api.spotify.com/v1"
+SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
-class RefreshTokenAuth:
-    """Simple auth manager that uses a refresh token."""
+
+class SpotifyAuth:
+    """Handles Spotify OAuth token refresh."""
 
     def __init__(self, client_id: str, client_secret: str, refresh_token: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
-        self._token_info = None
+        self._access_token: str | None = None
+        self._expires_at: float = 0
 
-        # Use SpotifyOAuth just for token refresh
-        self._oauth = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri="http://127.0.0.1:8888/callback",
-            scope="playlist-modify-public playlist-modify-private playlist-read-private",
-            open_browser=False,
-        )
-
-    def get_access_token(self, as_dict: bool = True, check_cache: bool = True):
+    def get_access_token(self) -> str:
         """Get a valid access token, refreshing if necessary."""
-        if self._token_info and not self._is_token_expired():
-            return self._token_info if as_dict else self._token_info["access_token"]
+        if self._access_token and time.time() < self._expires_at - 60:
+            return self._access_token
 
         # Refresh the token
-        self._token_info = self._oauth.refresh_access_token(self.refresh_token)
-        return self._token_info if as_dict else self._token_info["access_token"]
+        auth_header = base64.b64encode(
+            f"{self.client_id}:{self.client_secret}".encode()
+        ).decode()
 
-    def _is_token_expired(self) -> bool:
-        if not self._token_info:
-            return True
-        # Add 60 second buffer
-        return self._token_info["expires_at"] - 60 < time.time()
+        resp = requests.post(
+            SPOTIFY_TOKEN_URL,
+            headers={"Authorization": f"Basic {auth_header}"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        self._access_token = data["access_token"]
+        self._expires_at = time.time() + data["expires_in"]
+
+        return self._access_token
 
 
 class SpotifyClient:
-    """Wrapper around spotipy for track search and playlist management."""
+    """Client for Spotify API operations."""
 
     def __init__(self, config: Config):
         """Initialize the Spotify client.
@@ -57,21 +68,29 @@ class SpotifyClient:
         """
         self.config = config
         self.playlist_id = config.spotify_playlist_id
-
-        # Use custom auth manager with refresh token
-        auth_manager = RefreshTokenAuth(
+        self._auth = SpotifyAuth(
             client_id=config.spotify_client_id,
             client_secret=config.spotify_client_secret,
             refresh_token=config.spotify_refresh_token,
         )
 
-        self.client = spotipy.Spotify(auth_manager=auth_manager)
-        self._auth_manager = auth_manager
-
     def _get_headers(self) -> dict:
-        """Get authorization headers for direct API calls."""
-        token = self._auth_manager.get_access_token(as_dict=False)
-        return {"Authorization": f"Bearer {token}"}
+        """Get authorization headers for API calls."""
+        return {"Authorization": f"Bearer {self._auth.get_access_token()}"}
+
+    def _get(self, endpoint: str, params: dict | None = None) -> dict:
+        """Make a GET request to the Spotify API."""
+        url = f"{SPOTIFY_API_BASE}/{endpoint}"
+        resp = requests.get(url, headers=self._get_headers(), params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _post(self, endpoint: str, data: dict | None = None) -> dict | None:
+        """Make a POST request to the Spotify API."""
+        url = f"{SPOTIFY_API_BASE}/{endpoint}"
+        resp = requests.post(url, headers=self._get_headers(), json=data)
+        resp.raise_for_status()
+        return resp.json() if resp.content else None
 
     def get_track(self, track_id: str) -> dict | None:
         """Get track info by Spotify track ID.
@@ -83,7 +102,7 @@ class SpotifyClient:
             Track dict or None if not found.
         """
         try:
-            return self.client.track(track_id)
+            return self._get(f"tracks/{track_id}")
         except Exception as e:
             logger.error(f"Failed to get track {track_id}: {e}")
             return None
@@ -103,7 +122,7 @@ class SpotifyClient:
             query = f"track:{title} artist:{artist}"
 
         try:
-            results = self.client.search(q=query, type="track", limit=1)
+            results = self._get("search", {"q": query, "type": "track", "limit": 1})
             tracks = results.get("tracks", {}).get("items", [])
             return tracks[0] if tracks else None
         except Exception as e:
@@ -125,12 +144,10 @@ class SpotifyClient:
                 logger.info(f"Track {track_id} already in playlist")
                 return True
 
-            # Use direct API call with /items endpoint (spotipy uses deprecated /tracks)
-            url = f"https://api.spotify.com/v1/playlists/{self.playlist_id}/items"
-            data = {"uris": [f"spotify:track:{track_id}"]}
-            resp = requests.post(url, headers=self._get_headers(), json=data)
-            resp.raise_for_status()
-
+            self._post(
+                f"playlists/{self.playlist_id}/items",
+                {"uris": [f"spotify:track:{track_id}"]},
+            )
             logger.info(f"Added track {track_id} to playlist {self.playlist_id}")
             return True
         except Exception as e:
@@ -151,16 +168,10 @@ class SpotifyClient:
             limit = 100
 
             while True:
-                # Use direct API call with /items endpoint (spotipy uses deprecated /tracks)
-                url = f"https://api.spotify.com/v1/playlists/{self.playlist_id}/items"
-                params = {
-                    "offset": offset,
-                    "limit": limit,
-                    "fields": "items(track(id)),total",
-                }
-                resp = requests.get(url, headers=self._get_headers(), params=params)
-                resp.raise_for_status()
-                results = resp.json()
+                results = self._get(
+                    f"playlists/{self.playlist_id}/items",
+                    {"offset": offset, "limit": limit, "fields": "items(track(id))"},
+                )
 
                 items = results.get("items", [])
                 for item in items:
