@@ -17,6 +17,7 @@ class Config:
     spotify_refresh_token: str
     spotify_playlist_id: str
     slack_channel_ids: list[str] | None = None
+    debug_messages: bool = False
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -47,6 +48,8 @@ class Config:
             else None
         )
 
+        debug_messages = os.getenv("DEBUG_MESSAGES", "").lower() in ("1", "true", "yes")
+
         return cls(
             slack_bot_token=os.environ["SLACK_BOT_TOKEN"],
             slack_app_token=os.environ["SLACK_APP_TOKEN"],
@@ -55,4 +58,5 @@ class Config:
             spotify_refresh_token=os.environ["SPOTIFY_REFRESH_TOKEN"],
             spotify_playlist_id=os.environ["SPOTIFY_PLAYLIST_ID"],
             slack_channel_ids=channel_ids,
+            debug_messages=debug_messages,
         )
