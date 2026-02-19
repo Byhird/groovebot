@@ -5,7 +5,7 @@ import logging
 from slack_bolt import App
 
 from .config import Config
-from .extractors import MusicLink, extract_music_links, get_youtube_track_info
+from .extractors import MusicLink, TrackInfo, extract_music_links, get_youtube_track_info
 from .spotify import SpotifyClient
 
 logger = logging.getLogger(__name__)
@@ -64,15 +64,15 @@ class MessageHandler:
         ts = event["ts"]
 
         try:
-            track = self._resolve_track(link)
+            track, track_info = self._resolve_track(link)
 
             if not track:
                 logger.warning(f"Could not find Spotify track for {link.url}")
                 client.reactions_add(channel=channel, timestamp=ts, name="question")
-                self._send_debug_message(
-                    client, channel, ts,
-                    f":question: Could not find Spotify track for: {link.url}"
-                )
+                message = f":question: Could not find Spotify track for: {link.url}"
+                if track_info:
+                    message += f"\nyt-dlp metadata — Title: {track_info.title}, Artist: {track_info.artist}"
+                self._send_debug_message(client, channel, ts, message)
                 return
 
             track_id = track["id"]
@@ -121,27 +121,27 @@ class MessageHandler:
         except Exception as e:
             logger.warning(f"Failed to send debug message: {e}")
 
-    def _resolve_track(self, link: MusicLink) -> dict | None:
+    def _resolve_track(self, link: MusicLink) -> tuple[dict | None, "TrackInfo | None"]:
         """Resolve a music link to a Spotify track.
 
         Args:
             link: Parsed music link.
 
         Returns:
-            Spotify track dict or None if not found.
+            Tuple of (Spotify track dict, TrackInfo) — either may be None.
         """
         if link.source == "spotify":
-            return self.spotify.get_track(link.id)
+            return self.spotify.get_track(link.id), None
 
         elif link.source == "youtube":
             track_info = get_youtube_track_info(link.url)
 
             if not track_info:
-                return None
+                return None, None
 
-            return self.spotify.search_track(track_info.title, track_info.artist)
+            return self.spotify.search_track(track_info.title, track_info.artist), track_info
 
-        return None
+        return None, None
 
 
 def register_handlers(app: App, config: Config, spotify: SpotifyClient) -> None:

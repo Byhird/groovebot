@@ -31,6 +31,7 @@ A Slack bot that watches channels for YouTube and Spotify links and adds them to
    - `channels:history` - Read messages in public channels
    - `groups:history` - Read messages in private channels (if needed)
    - `reactions:write` - Add reactions to messages
+   - `chat:write` - Post messages (required for `DEBUG_MESSAGES` feature)
 3. Under **Socket Mode**, enable Socket Mode
 4. Under **Event Subscriptions**, enable events and subscribe to:
    - `message.channels` - Messages in public channels
@@ -50,7 +51,7 @@ Copy these tokens:
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
-3. Add `http://localhost:8888/callback` as a Redirect URI
+3. Add `http://127.0.0.1:8888/callback` as a Redirect URI
 4. Copy the **Client ID** and **Client Secret**
 
 ### 3. Get Spotify Refresh Token
