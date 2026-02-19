@@ -69,6 +69,10 @@ class MessageHandler:
             if not track:
                 logger.warning(f"Could not find Spotify track for {link.url}")
                 client.reactions_add(channel=channel, timestamp=ts, name="question")
+                self._send_debug_message(
+                    client, channel, ts,
+                    f":question: Could not find Spotify track for: {link.url}"
+                )
                 return
 
             track_id = track["id"]
@@ -80,13 +84,42 @@ class MessageHandler:
             else:
                 logger.error(f"Failed to add to playlist: {display_name}")
                 client.reactions_add(channel=channel, timestamp=ts, name="x")
+                self._send_debug_message(
+                    client, channel, ts,
+                    f":x: Failed to add to playlist: {display_name}"
+                )
 
         except Exception as e:
             logger.error(f"Error processing link {link.url}: {e}")
             try:
                 client.reactions_add(channel=channel, timestamp=ts, name="x")
+                self._send_debug_message(
+                    client, channel, ts,
+                    f":x: Error processing link {link.url}: {e}"
+                )
             except Exception:
                 pass  # Best effort reaction
+
+    def _send_debug_message(self, client, channel: str, thread_ts: str, message: str) -> None:
+        """Send a debug message to the channel as a thread reply.
+
+        Args:
+            client: Slack WebClient.
+            channel: Channel ID.
+            thread_ts: Parent message timestamp to reply to.
+            message: Debug message to send.
+        """
+        if not self.config.debug_messages:
+            return
+
+        try:
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=message,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send debug message: {e}")
 
     def _resolve_track(self, link: MusicLink) -> dict | None:
         """Resolve a music link to a Spotify track.
