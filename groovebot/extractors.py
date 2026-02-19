@@ -121,18 +121,17 @@ def _clean_youtube_title(title: str, fallback_artist: str | None) -> tuple[str, 
     Returns:
         Tuple of (cleaned_title, artist).
     """
-    # Remove common suffixes
-    clean = re.sub(
-        r"\s*[\(\[]?\s*(?:official\s+)?(?:music\s+)?(?:video|audio|lyrics?|hd|hq|4k|remaster(?:ed)?)"
-        r"\s*[\)\]]?\s*$",
-        "",
-        title,
-        flags=re.IGNORECASE,
-    )
+    clean = _strip_metadata_from_title(title)
 
-    # Try "Artist - Title" format
+    # Try "Artist - Title" format (also handle en-dash and em-dash)
     if " - " in clean:
         parts = clean.split(" - ", 1)
+        return parts[1].strip(), parts[0].strip()
+    if " – " in clean:  # en-dash
+        parts = clean.split(" – ", 1)
+        return parts[1].strip(), parts[0].strip()
+    if " — " in clean:  # em-dash
+        parts = clean.split(" — ", 1)
         return parts[1].strip(), parts[0].strip()
 
     # Try "Title | Artist" format
@@ -141,3 +140,49 @@ def _clean_youtube_title(title: str, fallback_artist: str | None) -> tuple[str, 
         return parts[0].strip(), parts[1].strip()
 
     return clean.strip(), fallback_artist
+
+
+def _strip_metadata_from_title(title: str) -> str:
+    """Remove parenthetical/bracketed metadata from a YouTube title.
+
+    Strips things like:
+    - (Official Video), (Lyric Video), (Music Video)
+    - (Live in City, State | Date)
+    - (French TV, 1967)
+    - [HD], [4K], [Remastered]
+    - 1080p HD, etc.
+
+    Args:
+        title: Raw video title.
+
+    Returns:
+        Title with metadata stripped.
+    """
+    clean = title
+
+    # Remove parenthetical/bracketed content containing metadata keywords
+    # This handles: (Live in ...), (Official Video), (Lyric Video), (French TV, 1967), etc.
+    metadata_pattern = re.compile(
+        r"\s*[\(\[]\s*"
+        r"(?:"
+        r"live\s+(?:in|at|from|on)\s+[^\)\]]+"
+        r"|[^\)\]]*?\b(?:official|music|lyric|lyrics|video|audio|hd|hq|4k|1080p|720p|remaster(?:ed)?|tv|version|edit|remix|cover|acoustic|unplugged|session|performance|concert|tour)\b[^\)\]]*"
+        r"|[^\)\]]*\b\d{4}\b[^\)\]]*"  # anything with a year like (1967) or (July 28, 2025)
+        r")"
+        r"\s*[\)\]]",
+        flags=re.IGNORECASE,
+    )
+    clean = metadata_pattern.sub("", clean)
+
+    # Remove standalone quality suffixes without brackets
+    clean = re.sub(
+        r"\s+(?:1080p|720p|480p|4k|hd|hq)(?:\s+hd)?\s*$",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    )
+
+    # Clean up any double spaces and trim
+    clean = re.sub(r"\s{2,}", " ", clean).strip()
+
+    return clean
