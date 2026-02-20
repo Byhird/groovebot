@@ -10,6 +10,8 @@ A Slack bot that watches channels for YouTube and Spotify links and adds them to
 - Extracts song metadata from YouTube videos using yt-dlp
 - Searches Spotify for matching tracks
 - Adds tracks to a configured playlist
+- `@groovebot add: Artist - Song Name` — manually add a track by name
+- `@groovebot help` — display usage info and reaction meanings
 - Reacts to messages with ✅ on success or ❓/❌ on failure
 - Duplicate detection (won't add the same track twice)
 
@@ -28,12 +30,14 @@ A Slack bot that watches channels for YouTube and Spotify links and adds them to
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
 2. Under **OAuth & Permissions**, add these Bot Token Scopes:
+   - `app_mentions:read` - Receive @groovebot mentions
    - `channels:history` - Read messages in public channels
    - `groups:history` - Read messages in private channels (if needed)
    - `reactions:write` - Add reactions to messages
-   - `chat:write` - Post messages (required for `DEBUG_MESSAGES` feature)
+   - `chat:write` - Post messages (required for `DEBUG_MESSAGES` feature and mention replies)
 3. Under **Socket Mode**, enable Socket Mode
 4. Under **Event Subscriptions**, enable events and subscribe to:
+   - `app_mention` - @groovebot mentions
    - `message.channels` - Messages in public channels
    - `message.groups` - Messages in private channels (if needed)
 
@@ -118,6 +122,13 @@ python -m groovebot.main
 3. For YouTube links: extracts metadata with yt-dlp, searches Spotify
 4. For Spotify links: uses the track ID directly
 5. Adds the track to the playlist and reacts to the message
+
+### Mention Commands
+
+Users can also interact with Groovebot directly via @mentions:
+
+- `@groovebot add: Artist - Song Name` — searches Spotify for the given artist and song and adds the best match to the playlist.
+- `@groovebot help` — replies with a summary of features and what the reaction emojis mean.
 
 ## Spotify API Note
 
