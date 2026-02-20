@@ -114,6 +114,7 @@ python -m groovebot.main
 | `SPOTIFY_REFRESH_TOKEN` | Yes | Spotify refresh token (from setup script) |
 | `SPOTIFY_PLAYLIST_ID` | Yes | Target playlist ID |
 | `SLACK_CHANNEL_IDS` | No | Comma-separated channel IDs to monitor (monitors all if not set) |
+| `DEBUG_MESSAGES` | No | Boolean to determine whether Groovebot replies with an error message if it errors |
 
 ## How It Works
 
