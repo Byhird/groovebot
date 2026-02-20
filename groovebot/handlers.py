@@ -255,7 +255,7 @@ class MentionHandler:
             "\u2022 :white_check_mark: — Track was added to the playlist\n"
             "\u2022 :question: — Couldn't find a matching track on Spotify\n"
             "\u2022 :x: — Something went wrong adding the track\n\n"
-            f":spotify: *Playlist:* {playlist_url}"
+            f":spotify: *Playlist Link:* {playlist_url}"
         )
         say(text=help_text, thread_ts=ts)
 
