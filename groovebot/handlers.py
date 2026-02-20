@@ -1,6 +1,7 @@
 """Slack event handlers for processing music links."""
 
 import logging
+import re
 
 from slack_bolt import App
 
@@ -9,6 +10,12 @@ from .extractors import MusicLink, TrackInfo, extract_music_links, get_youtube_t
 from .spotify import SpotifyClient
 
 logger = logging.getLogger(__name__)
+
+# Pattern to match "add: Artist - Song" (supports -, –, and — as separators)
+ADD_COMMAND_PATTERN = re.compile(
+    r"add:\s*(.+?)\s*[-–—]\s*(.+)",
+    re.IGNORECASE,
+)
 
 
 class MessageHandler:
@@ -144,6 +151,115 @@ class MessageHandler:
         return None, None
 
 
+class MentionHandler:
+    """Handles @groovebot mentions with commands."""
+
+    def __init__(self, config: Config, spotify: SpotifyClient):
+        self.config = config
+        self.spotify = spotify
+
+    def handle_mention(self, event: dict, client, say) -> None:
+        """Process an app_mention event.
+
+        Args:
+            event: Slack app_mention event dict.
+            client: Slack WebClient for API calls.
+            say: Function to send messages.
+        """
+        text = event.get("text", "")
+        channel = event.get("channel")
+        ts = event.get("ts")
+
+        # Strip the bot mention (<@BOTID>) to get the command text
+        command_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+
+        if command_text.lower().startswith("add:"):
+            self._handle_add(command_text, channel, ts, client, say)
+        elif command_text.lower() in ("help", ""):
+            self._handle_help(channel, ts, say)
+        else:
+            say(
+                text=f":question: Unknown command. Try `@groovebot help` for usage info.",
+                thread_ts=ts,
+            )
+
+    def _handle_add(self, command_text: str, channel: str, ts: str, client, say) -> None:
+        """Handle the 'add: Artist - Song' command.
+
+        Args:
+            command_text: The command text after the bot mention.
+            channel: Channel ID.
+            ts: Message timestamp.
+            client: Slack WebClient.
+            say: Function to send messages.
+        """
+        match = ADD_COMMAND_PATTERN.match(command_text)
+        if not match:
+            say(
+                text=(
+                    ":warning: Couldn't parse that. Use the format:\n"
+                    "`@groovebot add: Artist - Song Name`"
+                ),
+                thread_ts=ts,
+            )
+            return
+
+        artist = match.group(1).strip()
+        song = match.group(2).strip()
+
+        logger.info(f"Add command: artist='{artist}', song='{song}'")
+
+        track = self.spotify.search_track(song, artist)
+        if not track:
+            logger.warning(f"Could not find Spotify track for '{artist} - {song}'")
+            client.reactions_add(channel=channel, timestamp=ts, name="question")
+            say(
+                text=f":question: Couldn't find a Spotify track for: *{artist} - {song}*",
+                thread_ts=ts,
+            )
+            return
+
+        track_id = track["id"]
+        display_name = self.spotify.get_track_display_name(track)
+
+        if self.spotify.add_to_playlist(track_id):
+            logger.info(f"Added to playlist via command: {display_name}")
+            client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+        else:
+            logger.error(f"Failed to add to playlist: {display_name}")
+            client.reactions_add(channel=channel, timestamp=ts, name="x")
+            say(
+                text=f":x: Failed to add to playlist: *{display_name}*",
+                thread_ts=ts,
+            )
+
+    def _handle_help(self, channel: str, ts: str, say) -> None:
+        """Send the help message.
+
+        Args:
+            channel: Channel ID.
+            ts: Message timestamp.
+            say: Function to send messages.
+        """
+        playlist_url = f"https://open.spotify.com/playlist/{self.config.spotify_playlist_id}"
+        help_text = (
+            ":musical_note: *Groovebot Help*\n\n"
+            "*Automatic link detection:*\n"
+            "Post a YouTube or Spotify link in the channel and I'll "
+            "automatically add the track to the shared Spotify playlist.\n\n"
+            "*Manual add:*\n"
+            "`@groovebot add: Artist - Song Name`\n"
+            "Search Spotify for a track by artist and song name and add it "
+            "to the playlist.\n\n"
+            "*Reactions:*\n"
+            "\u2022 :white_check_mark: — Track was added to the playlist\n"
+            "\u2022 :question: — Couldn't find a matching track on Spotify\n"
+            "\u2022 :x: — Something went wrong adding the track\n\n"
+            f":spotify: *Playlist Link:* {playlist_url}"
+        )
+        say(text=help_text, thread_ts=ts)
+
+
 def register_handlers(app: App, config: Config, spotify: SpotifyClient) -> None:
     """Register event handlers with the Slack app.
 
@@ -152,10 +268,15 @@ def register_handlers(app: App, config: Config, spotify: SpotifyClient) -> None:
         config: Application configuration.
         spotify: Spotify client.
     """
-    handler = MessageHandler(config, spotify)
+    message_handler = MessageHandler(config, spotify)
+    mention_handler = MentionHandler(config, spotify)
 
     @app.event("message")
     def handle_message_event(event, client, say):
-        handler.handle_message(event, client, say)
+        message_handler.handle_message(event, client, say)
 
-    logger.info("Message handlers registered")
+    @app.event("app_mention")
+    def handle_app_mention_event(event, client, say):
+        mention_handler.handle_mention(event, client, say)
+
+    logger.info("Message and mention handlers registered")
