@@ -1,8 +1,15 @@
 """Tests for extractors module."""
 
+from unittest.mock import patch, Mock
+
 import pytest
 
-from groovebot.extractors import _clean_youtube_title, _strip_metadata_from_title
+from groovebot.extractors import (
+    _clean_youtube_title,
+    _strip_metadata_from_title,
+    extract_music_links,
+    get_youtube_track_info,
+)
 
 
 class TestStripMetadataFromTitle:
@@ -119,3 +126,112 @@ class TestCleanYoutubeTitle:
         song, artist = _clean_youtube_title(title, "Fallback Artist")
         assert song == "Just A Song Title"
         assert artist == "Fallback Artist"
+
+
+class TestExtractMusicLinks:
+    """Tests for extract_music_links function."""
+
+    def test_youtube_standard_url(self):
+        links = extract_music_links("check this out https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        assert len(links) == 1
+        assert links[0].source == "youtube"
+        assert links[0].id == "dQw4w9WgXcQ"
+
+    def test_youtube_short_url(self):
+        links = extract_music_links("https://youtu.be/dQw4w9WgXcQ")
+        assert len(links) == 1
+        assert links[0].source == "youtube"
+
+    def test_youtube_music_url(self):
+        links = extract_music_links("https://music.youtube.com/watch?v=dQw4w9WgXcQ")
+        assert len(links) == 1
+        assert links[0].source == "youtube"
+
+    def test_spotify_url(self):
+        links = extract_music_links("https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8")
+        assert len(links) == 1
+        assert links[0].source == "spotify"
+        assert links[0].id == "4PTG3Z6ehGkBFwjybzWkR8"
+
+    def test_no_links(self):
+        links = extract_music_links("just a normal message")
+        assert len(links) == 0
+
+    def test_multiple_links(self):
+        text = (
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ "
+            "https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8"
+        )
+        links = extract_music_links(text)
+        assert len(links) == 2
+
+
+class TestGetYoutubeTrackInfo:
+    """Tests for get_youtube_track_info using mocked oEmbed responses."""
+
+    @patch("groovebot.extractors.requests.get")
+    def test_basic_artist_title(self, mock_get):
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "title": "The Easybeats - Friday On My Mind (French TV, 1967) 1080p HD",
+            "author_name": "SomeChannel",
+        }
+        mock_resp.raise_for_status = Mock()
+        mock_get.return_value = mock_resp
+
+        info = get_youtube_track_info("https://www.youtube.com/watch?v=test123")
+        assert info is not None
+        assert info.title == "Friday On My Mind"
+        assert info.artist == "The Easybeats"
+        assert info.source == "youtube"
+
+    @patch("groovebot.extractors.requests.get")
+    def test_fallback_to_author_name(self, mock_get):
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "title": "Friday On My Mind",
+            "author_name": "The Easybeats",
+        }
+        mock_resp.raise_for_status = Mock()
+        mock_get.return_value = mock_resp
+
+        info = get_youtube_track_info("https://www.youtube.com/watch?v=test123")
+        assert info is not None
+        assert info.title == "Friday On My Mind"
+        assert info.artist == "The Easybeats"
+
+    @patch("groovebot.extractors.requests.get")
+    def test_no_title_returns_none(self, mock_get):
+        mock_resp = Mock()
+        mock_resp.json.return_value = {"author_name": "SomeChannel"}
+        mock_resp.raise_for_status = Mock()
+        mock_get.return_value = mock_resp
+
+        info = get_youtube_track_info("https://www.youtube.com/watch?v=test123")
+        assert info is None
+
+    @patch("groovebot.extractors.requests.get")
+    def test_http_error_returns_none(self, mock_get):
+        mock_get.side_effect = Exception("HTTP 404")
+
+        info = get_youtube_track_info("https://www.youtube.com/watch?v=test123")
+        assert info is None
+
+    @patch("groovebot.extractors.requests.get")
+    def test_oembed_called_with_correct_params(self, mock_get):
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "title": "Artist - Song",
+            "author_name": "Artist",
+        }
+        mock_resp.raise_for_status = Mock()
+        mock_get.return_value = mock_resp
+
+        url = "https://www.youtube.com/watch?v=abc123"
+        get_youtube_track_info(url)
+
+        mock_get.assert_called_once_with(
+            "https://www.youtube.com/oembed",
+            params={"url": url, "format": "json"},
+            timeout=10,
+        )
