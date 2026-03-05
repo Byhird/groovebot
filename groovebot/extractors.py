@@ -4,9 +4,11 @@ import logging
 import re
 from dataclasses import dataclass
 
-import yt_dlp
+import requests
 
 logger = logging.getLogger(__name__)
+
+YOUTUBE_OEMBED_URL = "https://www.youtube.com/oembed"
 
 # Regex patterns for music links
 YOUTUBE_PATTERN = re.compile(
@@ -62,7 +64,10 @@ def extract_music_links(text: str) -> list[MusicLink]:
 
 
 def get_youtube_track_info(url: str) -> TrackInfo | None:
-    """Fetch track metadata from a YouTube video.
+    """Fetch track metadata from a YouTube video using the oEmbed API.
+
+    Uses YouTube's oEmbed endpoint which works reliably from cloud/server
+    IPs (unlike yt-dlp which relies on scraping and gets blocked).
 
     Args:
         url: YouTube video URL.
@@ -70,36 +75,28 @@ def get_youtube_track_info(url: str) -> TrackInfo | None:
     Returns:
         TrackInfo if metadata was successfully extracted, None otherwise.
     """
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": False,
-        "skip_download": True,
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        resp = requests.get(
+            YOUTUBE_OEMBED_URL,
+            params={"url": url, "format": "json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
-            if not info:
-                return None
+        title = data.get("title")
+        author = data.get("author_name")
 
-            # yt-dlp often extracts artist/track for music videos
-            artist = info.get("artist") or info.get("creator") or info.get("uploader")
-            title = info.get("track") or info.get("title")
+        if not title:
+            return None
 
-            if not title:
-                return None
+        title, artist = _clean_youtube_title(title, author)
 
-            # Clean up the title if no track metadata available
-            if not info.get("track"):
-                title, artist = _clean_youtube_title(title, artist)
-
-            return TrackInfo(
-                title=title,
-                artist=artist or "Unknown",
-                source="youtube",
-            )
+        return TrackInfo(
+            title=title,
+            artist=artist or "Unknown",
+            source="youtube",
+        )
 
     except Exception as e:
         logger.error(f"Failed to extract YouTube metadata: {e}")

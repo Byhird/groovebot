@@ -7,7 +7,7 @@ A Slack bot that watches channels for YouTube and Spotify links and adds them to
 ## Features
 
 - Monitors Slack channels for YouTube and Spotify track links
-- Extracts song metadata from YouTube videos using yt-dlp
+- Extracts song metadata from YouTube videos using the YouTube oEmbed API
 - Searches Spotify for matching tracks
 - Adds tracks to a configured playlist
 - `@groovebot add: Artist - Song Name` — manually add a track by name
@@ -120,7 +120,7 @@ python -m groovebot.main
 
 1. Bot connects to Slack via Socket Mode (no public URL needed)
 2. Listens for messages containing YouTube or Spotify links
-3. For YouTube links: extracts metadata with yt-dlp, searches Spotify
+3. For YouTube links: fetches metadata via YouTube's oEmbed API, searches Spotify
 4. For Spotify links: uses the track ID directly
 5. Adds the track to the playlist and reacts to the message
 
