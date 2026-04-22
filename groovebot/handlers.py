@@ -56,16 +56,25 @@ class MessageHandler:
 
         logger.info(f"Found {len(links)} music link(s) in message")
 
+        processed_track_ids: set[str] = set()
         for link in links:
-            self._process_link(link, event, client)
+            self._process_link(link, event, client, processed_track_ids)
 
-    def _process_link(self, link: MusicLink, event: dict, client) -> None:
+    def _process_link(
+        self,
+        link: MusicLink,
+        event: dict,
+        client,
+        processed_track_ids: set[str],
+    ) -> None:
         """Process a single music link.
 
         Args:
             link: Parsed music link.
             event: Original Slack event.
             client: Slack WebClient.
+            processed_track_ids: Set of track IDs already processed for this
+                message, to prevent duplicate adds within the same message.
         """
         channel = event["channel"]
         ts = event["ts"]
@@ -83,6 +92,12 @@ class MessageHandler:
                 return
 
             track_id = track["id"]
+
+            if track_id in processed_track_ids:
+                logger.info(f"Skipping duplicate track in message: {track_id}")
+                return
+            processed_track_ids.add(track_id)
+
             display_name = self.spotify.get_track_display_name(track)
 
             if self.spotify.add_to_playlist(track_id):
