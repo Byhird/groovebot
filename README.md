@@ -115,6 +115,19 @@ python -m groovebot.main
 | `SPOTIFY_PLAYLIST_ID` | Yes | Target playlist ID |
 | `SLACK_CHANNEL_IDS` | No | Comma-separated channel IDs to monitor (monitors all if not set) |
 | `DEBUG_MESSAGES` | No | Boolean to determine whether Groovebot replies with an error message if it errors |
+| `ENABLE_STARTUP_BACKFILL` | No | On startup, scan the last 7 days of history and backfill any music links the bot missed while offline |
+
+## Startup Backfill
+
+If `ENABLE_STARTUP_BACKFILL=true`, Groovebot will on startup:
+
+1. Look back through the last **7 days** of message history in every monitored channel
+2. Find messages containing YouTube or Spotify music links
+3. Skip any message where the bot has already reacted with :white_check_mark:
+4. Resolve each link to a Spotify track and add it to the playlist
+5. Add the :white_check_mark: reaction so the backfilled messages are marked as processed
+
+This is useful if the bot was offline for maintenance, deployment, or crashes — it will automatically catch up on anything it missed without duplicating tracks.
 
 ## How It Works
 
