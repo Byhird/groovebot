@@ -94,9 +94,10 @@ class BackfillRunner:
                     continue
 
                 processed_msgs += 1
+                per_msg_ids: set[str] = set()
                 for link in links:
                     success = self.message_handler.process_link_standalone(
-                        link, channel, msg["ts"], self.client
+                        link, channel, msg["ts"], self.client, per_msg_ids
                     )
                     if success:
                         added_tracks += 1
