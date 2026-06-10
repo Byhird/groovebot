@@ -57,13 +57,16 @@ class MessageHandler:
         logger.info(f"Found {len(links)} music link(s) in message")
 
         processed_track_ids: set[str] = set()
+        ts = event["ts"]
+        assert channel is not None, "channel must be present in message event"
         for link in links:
-            self._process_link(link, event, client, processed_track_ids)
+            self._process_link(link, channel, ts, client, processed_track_ids)
 
     def _process_link(
         self,
         link: MusicLink,
-        event: dict,
+        channel: str,
+        ts: str,
         client,
         processed_track_ids: set[str],
     ) -> None:
@@ -71,14 +74,12 @@ class MessageHandler:
 
         Args:
             link: Parsed music link.
-            event: Original Slack event.
+            channel: Slack channel ID.
+            ts: Message timestamp.
             client: Slack WebClient.
             processed_track_ids: Set of track IDs already processed for this
                 message, to prevent duplicate adds within the same message.
         """
-        channel = event["channel"]
-        ts = event["ts"]
-
         try:
             track, track_info = self._resolve_track(link)
 
@@ -164,6 +165,77 @@ class MessageHandler:
             return self.spotify.search_track(track_info.title, track_info.artist), track_info
 
         return None, None
+
+    def process_link_standalone(
+        self,
+        link: MusicLink,
+        channel: str,
+        ts: str,
+        client,
+        processed_track_ids: set[str] | None = None,
+    ) -> bool:
+        """Process a single music link outside of a normal message flow.
+
+        This is used by the startup backfill runner.  It mirrors the
+        real-time handler's reaction behaviour so backfilled messages
+        are indistinguishable from newly arrived ones.
+
+        Args:
+            link: Parsed music link.
+            channel: Slack channel ID.
+            ts: Message timestamp.
+            client: Slack WebClient.
+            processed_track_ids: Optional dedupe set for tracks within the
+                same parent message.
+
+        Returns:
+            True if the track was added (or already present), False otherwise.
+        """
+        try:
+            track, track_info = self._resolve_track(link)
+
+            if not track:
+                logger.warning(f"Backfill: could not resolve {link.url}")
+                client.reactions_add(channel=channel, timestamp=ts, name="question")
+                message = f":question: Could not find Spotify track for: {link.url}"
+                if track_info:
+                    message += f"\nyt-dlp metadata — Title: {track_info.title}, Artist: {track_info.artist}"
+                self._send_debug_message(client, channel, ts, message)
+                return False
+
+            track_id = track["id"]
+
+            if processed_track_ids is not None:
+                if track_id in processed_track_ids:
+                    logger.info(f"Backfill: skipping duplicate track in message: {track_id}")
+                    return True
+                processed_track_ids.add(track_id)
+
+            display_name = self.spotify.get_track_display_name(track)
+
+            if self.spotify.add_to_playlist(track_id):
+                logger.info(f"Backfill added: {display_name}")
+                client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+                return True
+            else:
+                logger.error(f"Backfill failed to add: {display_name}")
+                client.reactions_add(channel=channel, timestamp=ts, name="x")
+                self._send_debug_message(
+                    client, channel, ts,
+                    f":x: Failed to add to playlist: {display_name}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"Backfill error for {link.url}: {e}")
+            try:
+                client.reactions_add(channel=channel, timestamp=ts, name="x")
+                self._send_debug_message(
+                    client, channel, ts,
+                    f":x: Error processing link {link.url}: {e}"
+                )
+            except Exception:
+                pass
+            return False
 
 
 class MentionHandler:

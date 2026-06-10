@@ -18,6 +18,7 @@ class Config:
     spotify_playlist_id: str
     slack_channel_ids: list[str] | None = None
     debug_messages: bool = False
+    enable_startup_backfill: bool = False
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -49,6 +50,7 @@ class Config:
         )
 
         debug_messages = os.getenv("DEBUG_MESSAGES", "").lower() in ("1", "true", "yes")
+        enable_startup_backfill = os.getenv("ENABLE_STARTUP_BACKFILL", "").lower() in ("1", "true", "yes")
 
         return cls(
             slack_bot_token=os.environ["SLACK_BOT_TOKEN"],
@@ -59,4 +61,5 @@ class Config:
             spotify_playlist_id=os.environ["SPOTIFY_PLAYLIST_ID"],
             slack_channel_ids=channel_ids,
             debug_messages=debug_messages,
+            enable_startup_backfill=enable_startup_backfill,
         )

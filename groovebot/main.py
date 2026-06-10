@@ -6,8 +6,9 @@ import sys
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
+from .backfill import BackfillRunner
 from .config import Config
-from .handlers import register_handlers
+from .handlers import MessageHandler, register_handlers
 from .spotify import SpotifyClient
 
 # Configure logging
@@ -42,6 +43,15 @@ def main() -> None:
 
     # Register handlers
     register_handlers(app, config, spotify)
+
+    # Run startup backfill if enabled
+    if config.enable_startup_backfill:
+        message_handler = MessageHandler(config, spotify)
+        backfill = BackfillRunner(config, spotify, message_handler, app.client)
+        try:
+            backfill.run()
+        except Exception as e:
+            logger.error(f"Startup backfill failed: {e}")
 
     # Start Socket Mode handler
     handler = SocketModeHandler(app, config.slack_app_token)
