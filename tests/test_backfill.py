@@ -61,6 +61,56 @@ class TestBackfillRunner:
         args, kwargs = mock_client.conversations_history.call_args
         assert kwargs["channel"] == "C1"
 
+    def test_run_skips_messages_with_x_reaction(self, runner, mock_client, mock_handler):
+        mock_client.conversations_history.return_value = {
+            "messages": [
+                {
+                    "ts": "123.456",
+                    "text": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    "user": "U_USER",
+                }
+            ],
+            "has_more": False,
+        }
+        mock_client.reactions_get.return_value = {
+            "message": {
+                "reactions": [
+                    {
+                        "name": "x",
+                        "users": ["U_BOT"],
+                    }
+                ]
+            }
+        }
+
+        runner.run()
+        mock_handler.process_link_standalone.assert_not_called()
+
+    def test_run_skips_messages_with_question_reaction(self, runner, mock_client, mock_handler):
+        mock_client.conversations_history.return_value = {
+            "messages": [
+                {
+                    "ts": "123.456",
+                    "text": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    "user": "U_USER",
+                }
+            ],
+            "has_more": False,
+        }
+        mock_client.reactions_get.return_value = {
+            "message": {
+                "reactions": [
+                    {
+                        "name": "question",
+                        "users": ["U_BOT"],
+                    }
+                ]
+            }
+        }
+
+        runner.run()
+        mock_handler.process_link_standalone.assert_not_called()
+
     def test_run_skips_messages_with_bot_tick(self, runner, mock_client, mock_handler):
         mock_client.conversations_history.return_value = {
             "messages": [
@@ -236,7 +286,7 @@ class TestBackfillRunner:
         channels = [c.kwargs["channel"] for c in mock_client.conversations_history.call_args_list]
         assert sorted(channels) == ["C_A", "C_B"]
 
-    def test_has_bot_tick_returns_true_when_bot_reacted(self, runner, mock_client):
+    def test_is_message_processed_returns_true_when_bot_reacted_with_checkmark(self, runner, mock_client):
         mock_client.reactions_get.return_value = {
             "message": {
                 "reactions": [
@@ -245,16 +295,38 @@ class TestBackfillRunner:
             }
         }
         msg = {"ts": "1.0"}
-        assert runner._has_bot_tick(msg, "C1") is True
+        assert runner._is_message_processed(msg, "C1") is True
 
-    def test_has_bot_tick_returns_false_for_other_reaction(self, runner, mock_client):
+    def test_is_message_processed_returns_true_when_bot_reacted_with_x(self, runner, mock_client):
+        mock_client.reactions_get.return_value = {
+            "message": {
+                "reactions": [
+                    {"name": "x", "users": ["U_BOT", "U_OTHER"]}
+                ]
+            }
+        }
+        msg = {"ts": "1.0"}
+        assert runner._is_message_processed(msg, "C1") is True
+
+    def test_is_message_processed_returns_true_when_bot_reacted_with_question(self, runner, mock_client):
+        mock_client.reactions_get.return_value = {
+            "message": {
+                "reactions": [
+                    {"name": "question", "users": ["U_BOT", "U_OTHER"]}
+                ]
+            }
+        }
+        msg = {"ts": "1.0"}
+        assert runner._is_message_processed(msg, "C1") is True
+
+    def test_is_message_processed_returns_false_for_other_reaction(self, runner, mock_client):
         mock_client.reactions_get.return_value = {
             "message": {"reactions": [{"name": "eyes", "users": ["U_BOT"]}]}
         }
         msg = {"ts": "1.0"}
-        assert runner._has_bot_tick(msg, "C1") is False
+        assert runner._is_message_processed(msg, "C1") is False
 
-    def test_has_bot_tick_returns_false_when_other_user_reacted(self, runner, mock_client):
+    def test_is_message_processed_returns_false_when_other_user_reacted(self, runner, mock_client):
         mock_client.reactions_get.return_value = {
             "message": {
                 "reactions": [
@@ -263,7 +335,7 @@ class TestBackfillRunner:
             }
         }
         msg = {"ts": "1.0"}
-        assert runner._has_bot_tick(msg, "C1") is False
+        assert runner._is_message_processed(msg, "C1") is False
 
     def test_should_skip_message_for_bot(self, runner):
         assert runner._should_skip_message({"bot_id": "B123"}) is True

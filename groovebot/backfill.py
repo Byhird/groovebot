@@ -90,7 +90,7 @@ class BackfillRunner:
                 if not links:
                     continue
 
-                if self._has_bot_tick(msg, channel):
+                if self._is_message_processed(msg, channel):
                     continue
 
                 processed_msgs += 1
@@ -128,8 +128,12 @@ class BackfillRunner:
             return True
         return False
 
-    def _has_bot_tick(self, msg: dict, channel: str) -> bool:
-        """Check whether the bot has already reacted with :white_check_mark:."""
+    def _is_message_processed(self, msg: dict, channel: str) -> bool:
+        """Check whether the bot has already handled this message.
+
+        Returns True if the message has any of the bot's result reactions:
+        :white_check_mark: (success), :x: (failure), or :question: (not found).
+        """
         try:
             resp = self.client.reactions_get(
                 channel=channel,
@@ -138,11 +142,11 @@ class BackfillRunner:
             )
         except SlackApiError as e:
             logger.warning(f"Could not get reactions for {msg['ts']}: {e}")
-            return False  # assume no tick to be safe
+            return False  # assume unprocessed to be safe
 
         message = resp.get("message", {})
         for reaction in message.get("reactions", []):
-            if reaction.get("name") == "white_check_mark":
+            if reaction.get("name") in ("white_check_mark", "x", "question"):
                 users = reaction.get("users", [])
                 if not users:
                     continue
