@@ -233,8 +233,9 @@ class TestBackfillRunner:
         mock_handler.process_link_standalone.return_value = True
 
         runner.run()
-        # Should still attempt to process since we treat error as "no tick"
-        mock_handler.process_link_standalone.assert_called_once()
+        # Without reaction visibility we can't tell if the message was already
+        # handled, so we must skip it rather than risk reprocessing.
+        mock_handler.process_link_standalone.assert_not_called()
 
     def test_run_no_channels_when_not_configured(self, mock_spotify, mock_handler, mock_client):
         config_no_channels = Config(

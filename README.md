@@ -33,6 +33,7 @@ A Slack bot that watches channels for YouTube and Spotify links and adds them to
    - `app_mentions:read` - Receive @groovebot mentions
    - `channels:history` - Read messages in public channels
    - `groups:history` - Read messages in private channels (if needed)
+   - `reactions:read` - Check existing reactions on messages during startup backfill
    - `reactions:write` - Add reactions to messages
    - `chat:write` - Post messages (required for `DEBUG_MESSAGES` feature and mention replies)
 3. Under **Socket Mode**, enable Socket Mode
