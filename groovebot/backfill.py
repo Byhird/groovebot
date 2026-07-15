@@ -142,7 +142,7 @@ class BackfillRunner:
             )
         except SlackApiError as e:
             logger.warning(f"Could not get reactions for {msg['ts']}: {e}")
-            return False  # assume unprocessed to be safe
+            return True  # safest default: don't reprocess if we can't verify
 
         message = resp.get("message", {})
         for reaction in message.get("reactions", []):
